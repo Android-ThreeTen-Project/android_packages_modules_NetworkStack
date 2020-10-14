@@ -58,9 +58,11 @@ import android.provider.DeviceConfig;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.StructTimeval;
+import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 import android.util.LongSparseArray;
+import android.util.Pair;
 import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
@@ -87,6 +89,8 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Class for NetworkStack to send a SockDiag request and parse the returned tcp info.
@@ -251,6 +255,8 @@ public class TcpSocketTracker {
      * @Return if this polling request is sent to kernel and executes successfully or not.
      */
     public boolean pollSocketsInfo() {
+        if (!isTcpInfoParsingSupportedByKernel()) return false;
+
         // Traffic will be restricted in doze mode. TCP info may not reflect the correct network
         // behavior.
         // TODO: Traffic may be restricted by other reason. Get the restriction info from bpf in T+.
@@ -545,6 +551,35 @@ public class TcpSocketTracker {
 
     private void log(final String s) {
         Log.d(TAG + "/" + mNetwork.toString(), s);
+    }
+
+    private static boolean isTcpInfoParsingSupportedByKernel() {
+        final String kVersionString = Os.uname().release;
+        return compareMajorMinorVersion(kVersionString, "4.4") >= 0;
+    }
+
+    private static int compareMajorMinorVersion(final String s1, final String s2) {
+        final Pair<Integer, Integer> v1 = getVersionFromString(s1);
+        final Pair<Integer, Integer> v2 = getVersionFromString(s2);
+
+        if (v1.first == v2.first) {
+            return Integer.compare(v1.second, v2.second);
+        } else {
+            return Integer.compare(v1.first, v2.first);
+        }
+    }
+
+    private static Pair<Integer, Integer> getVersionFromString(String version) {
+        // Only gets major and minor number of the version string.
+        final Pattern versionPattern = Pattern.compile("^(\\d+)(\\.(\\d+))?.*");
+        final Matcher m = versionPattern.matcher(version);
+        if (m.matches()) {
+            final int major = Integer.parseInt(m.group(1));
+            final int minor = TextUtils.isEmpty(m.group(3)) ? 0 : Integer.parseInt(m.group(3));
+            return new Pair<>(major, minor);
+        } else {
+            return new Pair<>(0, 0);
+        }
     }
 
     private void loge(final String str) {
