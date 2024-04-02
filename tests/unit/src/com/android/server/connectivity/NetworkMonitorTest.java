@@ -781,6 +781,10 @@ public class NetworkMonitorTest {
         quitNetworkMonitors();
         // Clear mocks to prevent from stubs holding instances and cause memory leaks.
         Mockito.framework().clearInlineMocks();
+        if (mTstDependencies.isTcpInfoParsingSupported()) {
+            verify(mTstDependencies, times(networkMonitors.length))
+                    .removeDeviceConfigChangedListener(any());
+        }
     }
 
     private void initHttpConnection(HttpURLConnection connection) {
@@ -882,6 +886,7 @@ public class NetworkMonitorTest {
         setNetworkCapabilities(nm, nc);
         HandlerUtils.waitForIdle(nm.getHandler(), HANDLER_TIMEOUT_MS);
         mCreatedNetworkMonitors.add(nm);
+        doReturn(false).when(mTstDependencies).isTcpInfoParsingSupported();
 
         return nm;
     }
@@ -2035,6 +2040,7 @@ public class NetworkMonitorTest {
     public void testIsDataStall_SkipEvaluateOnValidationNotRequiredNetwork() {
         // Make DNS and TCP stall condition satisfied.
         setDataStallEvaluationType(DATA_STALL_EVALUATION_TYPE_DNS | DATA_STALL_EVALUATION_TYPE_TCP);
+        doReturn(true).when(mTstDependencies).isTcpInfoParsingSupported();
         doReturn(0).when(mTst).getLatestReceivedCount();
         doReturn(true).when(mTst).isDataStallSuspected();
         final WrappedNetworkMonitor nm = makeMonitor(CELL_NO_INTERNET_CAPABILITIES);
@@ -2069,6 +2075,7 @@ public class NetworkMonitorTest {
 
     @Test
     public void testIsDataStall_EvaluationTcp() throws Exception {
+        doReturn(true).when(mTstDependencies).isTcpInfoParsingSupported();
         // Evaluate TCP only. Expect ignoring DNS signal.
         setDataStallEvaluationType(DATA_STALL_EVALUATION_TYPE_TCP);
         WrappedNetworkMonitor wrappedMonitor = makeMonitor(CELL_METERED_CAPABILITIES);
@@ -2743,6 +2750,7 @@ public class NetworkMonitorTest {
     @Test
     public void testDataStall_setOpportunisticMode() {
         setDataStallEvaluationType(DATA_STALL_EVALUATION_TYPE_TCP);
+        doReturn(true).when(mTstDependencies).isTcpInfoParsingSupported();
         WrappedNetworkMonitor wnm = makeCellNotMeteredNetworkMonitor();
         InOrder inOrder = inOrder(mTst);
         // Initialized with default value.
@@ -2847,6 +2855,7 @@ public class NetworkMonitorTest {
     }
 
     private void setupTcpDataStall() {
+        doReturn(true).when(mTstDependencies).isTcpInfoParsingSupported();
         doReturn(0).when(mTst).getLatestReceivedCount();
         doReturn(TEST_TCP_FAIL_RATE).when(mTst).getLatestPacketFailPercentage();
         doReturn(TEST_TCP_PACKET_COUNT).when(mTst).getSentSinceLastRecv();
