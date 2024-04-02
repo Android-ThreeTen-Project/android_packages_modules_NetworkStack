@@ -37,10 +37,12 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import android.annotation.IntDef;
@@ -170,6 +172,7 @@ public class TcpSocketTrackerTest {
         mOldWtfHandler =
                 Log.setWtfHandler((tag, what, system) -> Log.e(tag, what.getMessage(), what));
         when(mDependencies.getNetd()).thenReturn(mNetd);
+        when(mDependencies.isTcpInfoParsingSupported()).thenReturn(true);
         when(mDependencies.connectToKernel()).thenReturn(new FileDescriptor());
         when(mDependencies.getDeviceConfigPropertyInt(
                 eq(NAMESPACE_CONNECTIVITY),
@@ -239,10 +242,15 @@ public class TcpSocketTrackerTest {
         assertFalse(NetlinkUtils.enoughBytesRemainForValidNlMsg(buffer));
     }
 
-    @Test
+    @Test @IgnoreUpTo(Build.VERSION_CODES.Q) // TCP info parsing is not supported on Q
     public void testPollSocketsInfo() throws Exception {
+        // This test requires shims that provide API 30 access
+        assumeTrue(ConstantsShim.VERSION >= Build.VERSION_CODES.R);
+        when(mDependencies.isTcpInfoParsingSupported()).thenReturn(false);
         final TcpSocketTracker tst = new TcpSocketTracker(mDependencies, mNetwork);
+        assertFalse(tst.pollSocketsInfo());
 
+        when(mDependencies.isTcpInfoParsingSupported()).thenReturn(true);
         // No enough bytes remain for a valid NlMsg.
         final ByteBuffer invalidBuffer = ByteBuffer.allocate(1);
         invalidBuffer.order(ByteOrder.nativeOrder());
@@ -444,6 +452,29 @@ public class TcpSocketTrackerTest {
     }
 
     @Test
+    public void testTcpInfoParsingUnsupported() {
+        doReturn(false).when(mDependencies).isTcpInfoParsingSupported();
+        final TcpSocketTracker tst = new TcpSocketTracker(mDependencies, mNetwork);
+        verify(mDependencies).getNetd();
+
+        assertFalse(tst.pollSocketsInfo());
+        assertEquals(-1, tst.getLatestPacketFailPercentage());
+        assertEquals(-1, tst.getLatestReceivedCount());
+        assertEquals(-1, tst.getSentSinceLastRecv());
+        assertFalse(tst.isDataStallSuspected());
+
+        verify(mDependencies, atLeastOnce()).isTcpInfoParsingSupported();
+        verify(mDependencies, atLeastOnce()).shouldDisableInLightDoze();
+        verifyNoMoreInteractions(mDependencies);
+
+        // Verify that no un-registration for the device configuration listener and broadcast
+        // receiver if TcpInfo parsing is not supported.
+        tst.quit();
+        verify(mDependencies, never()).removeDeviceConfigChangedListener(any());
+        verify(mDependencies, never()).removeBroadcastReceiver(any());
+    }
+
+    @Test @IgnoreUpTo(Build.VERSION_CODES.Q)
     public void testTcpInfoParsingWithMultipleMsgs() throws Exception {
         final TcpSocketTracker tst = new TcpSocketTracker(mDependencies, mNetwork);
 
@@ -792,6 +823,18 @@ public class TcpSocketTrackerTest {
         doReturn(tcpBufferV6, tcpBufferV4).when(mDependencies).recvMessage(any());
     }
 
+    @Test @IgnoreAfter(Build.VERSION_CODES.Q)
+    public void testTcpInfoParsingNotSupportedOnQ() {
+        assertFalse(new TcpSocketTracker.Dependencies(mContext)
+                .isTcpInfoParsingSupported());
+    }
+
+    @Test @IgnoreUpTo(Build.VERSION_CODES.Q)
+    public void testTcpInfoParsingSupportedFromR() {
+        assertTrue(new TcpSocketTracker.Dependencies(mContext)
+                .isTcpInfoParsingSupported());
+    }
+
     private static final String BAD_DIAG_MSG_HEX =
         // struct nlmsghdr.
             "00000058"      // length = 1476395008
@@ -819,8 +862,10 @@ public class TcpSocketTrackerTest {
     private static final byte[] BAD_SOCK_DIAG_MSG_BYTES =
         HexEncoding.decode(BAD_DIAG_MSG_HEX.toCharArray(), false);
 
-    @Test
+    @Test @IgnoreUpTo(Build.VERSION_CODES.Q) // TCP info parsing is not supported on Q
     public void testPollSocketsInfo_BadFormat() throws Exception {
+        // This test requires shims that provide API 30 access
+        assumeTrue(ConstantsShim.VERSION >= Build.VERSION_CODES.R);
         final TcpSocketTracker tst = new TcpSocketTracker(mDependencies, mNetwork);
         setupNormalTestTcpInfo();
         assertTrue(tst.pollSocketsInfo());
