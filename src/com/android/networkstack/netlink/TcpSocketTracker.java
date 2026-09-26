@@ -208,6 +208,7 @@ public class TcpSocketTracker {
         mDependencies = dps;
         mNetwork = network;
         mNetd = mDependencies.getNetd();
+        mCm = mDependencies.getContext().getSystemService(ConnectivityManager.class);
         mShouldIgnoreTcpInfoForBlockedUids = mDependencies.shouldIgnoreTcpInfoForBlockedUids();
 
         // Previous workarounds can be disabled if the device supports ignore blocked uids feature.
@@ -235,7 +236,6 @@ public class TcpSocketTracker {
         mDependencies.addDeviceConfigChangedListener(mConfigListener);
         mDependencies.addDeviceIdleReceiver(mDeviceIdleReceiver, mShouldDisableInDeepDoze,
                 mShouldDisableInLightDoze);
-        mCm = mDependencies.getContext().getSystemService(ConnectivityManager.class);
     }
 
     @Nullable
